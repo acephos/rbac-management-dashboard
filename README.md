@@ -1,8 +1,10 @@
-# RBAC Dashboard
+# Role-Based Access Control Dashboard
+
+Next.js + Supabase + Shadcn UI dashboard for managing members, roles, permissions, and tasks. Live demo: [rbac-management-dashboard-nine.vercel.app](https://rbac-management-dashboard-nine.vercel.app)
 
 ## Concept
 
-Role-Based Access Control (RBAC) is a method of regulating access to a system or network based on the roles of individual users within an organization. In this project, we implement RBAC to manage permissions and access levels for different users.
+Role-Based Access Control (RBAC) regulates access based on each user's role. This project applies that model so you can assign permissions and access levels without hard-coding them per user.
 
 ## Project Structure
 
