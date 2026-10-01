@@ -2,15 +2,15 @@ import React from "react";
 import EditTask from "./edit/EditTask";
 import { cn } from "@/lib/utils";
 import { readMemberNameByID, readTasks } from "../actions";
-import { useUserStore } from "@/lib/store/user";
+import { requireActor } from "@/lib/actor";
 import { ITask } from "@/lib/types";
 import DeleteTask from "./DeleteTask";
 
 export default async function ListOfTask() {
   const { data : tasks } = await readTasks();
-  const user = useUserStore.getState().user;
-  const isAdmin = user?.user_metadata.role === "admin";
-  const isManager = user?.user_metadata.role === "manager";
+  const user = await requireActor();
+  const isAdmin = user.role === "admin";
+  const isManager = user.role === "manager";
 
   return (
     <div className="dark:bg-inherit bg-white rounded-sm">

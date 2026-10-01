@@ -1,22 +1,11 @@
+import { requirePageActor } from "@/lib/actor";
 import { readUserSession } from '@/lib/actions';
 import React from 'react';
 import { createSupabaseAdmin } from '@/lib/supabase';
 import { redirect } from 'next/navigation';
 
 export default async function Dashboard() {
-	const { data: userSession } = await readUserSession();
-	
-		if (userSession.session) {
-			const supabase= await createSupabaseAdmin();
-			const { data: userStatus } = await supabase
-				.from('permission')
-				.select('status')
-				.eq('member_id', userSession.session.user.id)
-				.single();
-	
-			if (userStatus?.status === "resigned") {
-				return redirect("/inactive");
-			}}
+  await requirePageActor();
 
     return (
 		<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '90%' }}>

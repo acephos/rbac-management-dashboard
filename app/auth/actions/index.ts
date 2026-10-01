@@ -1,6 +1,7 @@
 "use server";
+import { credentialsSchema, loginSchema, nameSchema, actionError } from "@/lib/authorization";
 
-import { createSupabaseAdmin, createSupabaseServerClient } from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -8,11 +9,12 @@ export async function loginWithEmailAndPassword(data: {
   email: string;
   password: string;
 }) {
-  const supabase = await createSupabaseServerClient();
-
-  const result = await supabase.auth.signInWithPassword(data);
-  
-  return JSON.stringify(result);
+  try {
+    const input = loginSchema.parse(data);
+    const supabase = await createSupabaseServerClient();
+    const result = await supabase.auth.signInWithPassword(input);
+    return JSON.stringify(result);
+  } catch (error) { return actionError(error); }
 }
 
 export async function logout() {
@@ -21,40 +23,13 @@ export async function logout() {
   redirect("/auth");
 }
 
-export async function signUp(data: {
-  name: string;
-  role: "admin" | "manager" | "verified_user" | "new_user";
-  status: "active" | "resigned";
-  email: string;
-  password: string;
-  confirm: string;
-}) {
-  const supabase = await createSupabaseAdmin();
-  const createResult = await supabase.auth.admin.createUser({
-    email: data.email,
-    password: data.password,
-    email_confirm: true,
-    user_metadata: {
-      role: "new_user",
-    },
-  });
-
-  if (createResult.error?.message) return JSON.stringify(createResult);
-  else {
-    const memberResult = await supabase.from("member").insert({
-      name: data.name,
-      id: createResult.data.user?.id,
-      email: data.email,
-    });
-    if (memberResult.error?.message) return JSON.stringify(memberResult);
-    else {
-      const permissionResult = await supabase.from("permission").insert({
-        role: "new_user",
-        member_id: createResult.data.user?.id,
-        status: "active",
-      });
-      revalidatePath("/auth");
-      return JSON.stringify(permissionResult);
-    }
-  }
+export async function signUp(data: { name: string; email: string; password: string; confirm: string }) {
+  try {
+    const input = credentialsSchema.parse(data);
+    const name = nameSchema.parse({ name: data.name }).name;
+    const supabase = await createSupabaseServerClient();
+    const result = await supabase.auth.signUp({ email: input.email, password: input.password, options: { data: { name } } });
+    revalidatePath("/auth");
+    return JSON.stringify({ error: result.error });
+  } catch (error) { return actionError(error); }
 }
