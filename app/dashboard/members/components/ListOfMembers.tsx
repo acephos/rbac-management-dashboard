@@ -2,15 +2,15 @@
 import React from "react";
 import EditMember from "./edit/EditMember";
 import { cn } from "@/lib/utils";
-import { useUserStore } from "@/lib/store/user";
+import { requireActor } from "@/lib/actor";
 import { readMembers } from "../actions";
 import { IPermission } from "@/lib/types";
 import DeleteMember from "./DeleteMember";
 
 export default async function ListOfMembers() {
   const { data: permissions } = await readMembers();
-  const user = useUserStore.getState().user;
-  const isAdmin = user?.user_metadata.role === "admin";
+  const user = await requireActor();
+  const isAdmin = user.role === "admin";
 
   return (
     <div className="dark:bg-inherit bg-white mx-2 rounded-sm">

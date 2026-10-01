@@ -1,81 +1,61 @@
 "use server";
-import {
-  createSupabaseAdmin,
-  createSupabaseServerClient,
-} from "@/lib/supabase";
+import { createSupabaseServerClient } from "@/lib/supabase";
+import { requireActor } from "@/lib/actor";
+import { actionError, authorizeTask, idSchema, taskSchema, AuthorizationError } from "@/lib/authorization";
 import { revalidatePath, unstable_noStore } from "next/cache";
 
 export async function readMemberNameID() {
-  unstable_noStore();
-  const supabase = await createSupabaseAdmin();
-  return (await supabase.from("member").select("id,name")).data;
+  unstable_noStore(); await requireActor(["admin", "manager"]);
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.from("member").select("id,name"); if (error) throw error; return data;
 }
-
 export async function readMemberNameByID(member_id: string) {
-  unstable_noStore();
-  const supabase = await createSupabaseAdmin();
-  return (await supabase.from("member").select("name").eq("id", member_id)).data;
+  unstable_noStore(); await requireActor(["admin", "manager", "verified_user"]);
+  const client = await createSupabaseServerClient();
+  const { data, error } = await client.from("member").select("name").eq("id", idSchema.parse(member_id)); if (error) throw error; return data;
 }
-
-export async function createTask(data: { title: string; completed: boolean; created_by: string; assigned_to: string }) {
-  const supabase = await createSupabaseAdmin();
-  const taskResult = await supabase.from("task").insert({
-    title: data.title,
-    completed: data.completed,
-    created_by: data.created_by,
-    assigned_to: data.assigned_to.split(" - ")[0],
-  });
-  if (taskResult.error?.message) return JSON.stringify(taskResult);
-  else {
-    revalidatePath("/dashboard/tasks");
-    return JSON.stringify(taskResult);
+export async function createTask(data: { title: string; completed: boolean; created_by?: string; assigned_to: string }) {
+  try {
+    const actor = await requireActor(["admin", "manager"]);
+    const payload = taskSchema.parse(data); const assigned_to = idSchema.parse(data.assigned_to);
+    const client = await createSupabaseServerClient();
+    const { data: assignee } = await client.from("permission").select("role,status").eq("member_id", assigned_to).single();
+    if (!assignee || assignee.status !== "active" || assignee.role === "new_user") throw new AuthorizationError("Assignee must be an active verified member");
+    const result = await client.from("task").insert({ ...payload, assigned_to, created_by: actor.id });
+    revalidatePath("/dashboard/tasks"); return JSON.stringify(result);
+  } catch (error) { return actionError(error); }
+}
+async function update(data: { title: string; completed: boolean; task_id: string; assigned_to?: string }, elevated: boolean) {
+  const actor = await requireActor(elevated ? ["admin", "manager"] : ["admin", "manager", "verified_user"]);
+  const payload = taskSchema.parse(data); const taskId = idSchema.parse(data.task_id);
+  const client = await createSupabaseServerClient();
+  const { data: task, error } = await client.from("task").select("created_by,assigned_to").eq("id", taskId).single();
+  if (error || !task) throw new AuthorizationError("Task not found or unavailable");
+  authorizeTask(actor, task, elevated);
+  let assigned_to: string | undefined;
+  if (elevated) {
+    assigned_to = idSchema.parse(data.assigned_to);
+    const { data: assignee } = await client.from("permission").select("role,status").eq("member_id", assigned_to).single();
+    if (!assignee || assignee.status !== "active" || assignee.role === "new_user") throw new AuthorizationError("Assignee must be an active verified member");
   }
+  const result = await client.from("task").update({ ...payload, ...(assigned_to ? { assigned_to } : {}) }).eq("id", taskId);
+  revalidatePath("/dashboard/tasks"); return JSON.stringify(result);
 }
-
-
 export async function updateTaskById(data: { title: string; completed: boolean; task_id: string }) {
-  const payload = {
-    title: data.title,
-    completed: data.completed,
-  };
-  const supabase = await createSupabaseAdmin();
-  const taskResult = await supabase.from("task").update(payload).eq("id", data.task_id);
-  if (taskResult.error?.message) return JSON.stringify(taskResult);
-  else {
-    revalidatePath("/dashboard/tasks");
-    return JSON.stringify(taskResult);
-  }
+  try { return await update(data, false); } catch (error) { return actionError(error); }
 }
-
 export async function updateTaskByIdElevated(data: { title: string; completed: boolean; assigned_to: string; task_id: string }) {
-  const payload = {
-    title: data.title,
-    completed: data.completed,
-    assigned_to: data.assigned_to.split(" - ")[0],
-  };
-  const supabase = await createSupabaseAdmin();
-  const taskResult = await supabase.from("task").update(payload).eq("id", data.task_id);
-  if (taskResult.error?.message) return JSON.stringify(taskResult);
-  else {
-    revalidatePath("/dashboard/tasks");
-    return JSON.stringify(taskResult);
-  }
+  try { return await update(data, true); } catch (error) { return actionError(error); }
 }
-
 export async function deleteTaskById(task_id: string) {
-  const supabaseAdmin = await createSupabaseAdmin();
-  const searchTaskResult = await supabaseAdmin.from("task").select().eq("id", task_id);
-  if (searchTaskResult.error?.message) return JSON.stringify(searchTaskResult);
-  else {
-    const supabase = await createSupabaseServerClient();
-    const result = await supabase.from("task").delete().eq("id", task_id);
-    revalidatePath("/dashboard/tasks");
-    return JSON.stringify(result);
-  }
+  try {
+    await requireActor(["admin", "manager"]);
+    const client = await createSupabaseServerClient();
+    const result = await client.from("task").delete().eq("id", idSchema.parse(task_id));
+    revalidatePath("/dashboard/tasks"); return JSON.stringify(result);
+  } catch (error) { return actionError(error); }
 }
-
 export async function readTasks() {
-  unstable_noStore();
-  const supabase = await createSupabaseServerClient();
-  return await supabase.from("task").select("*");
+  unstable_noStore(); await requireActor(["admin", "manager", "verified_user"]);
+  const client = await createSupabaseServerClient(); return client.from("task").select("*");
 }
